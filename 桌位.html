@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>座位查詢系統</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fcfcfc;
+            overscroll-behavior: none;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* SVG Map Styles */
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            touch-action: none; 
+            cursor: grab;
+        }
+        svg:active {
+            cursor: grabbing;
+        }
+
+        .smooth-zoom {
+            transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        .seat-circle {
+            stroke-width: 2;
+            transition: fill 0.3s ease;
+            pointer-events: auto;
+            cursor: default;
+        }
+
+        /* 顏色定義 */
+        .seat-red {
+            fill: #fecaca; /* 紅色-200 */
+            stroke: #ef4444; /* 紅色-500 */
+        }
+        
+        .seat-orange {
+            fill: #fed7aa; /* 橘色-200 */
+            stroke: #f97316; /* 橘色-500 */
+        }
+
+        .seat-text {
+            fill: #475569;
+            font-size: 14px;
+            font-weight: 800;
+            pointer-events: none;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            text-rendering: optimizeLegibility; 
+        }
+        
+        /* Highlight State & Animation */
+        .seat-active {
+            fill: #fef08a !important; 
+            stroke: #eab308 !important;
+            animation: pulse-border 1.5s infinite;
+        }
+        .seat-active + .seat-text {
+            fill: #000000 !important;
+        }
+
+        @keyframes pulse-border {
+            0% { stroke-width: 3; stroke-opacity: 1; }
+            50% { stroke-width: 8; stroke-opacity: 0.6; }
+            100% { stroke-width: 3; stroke-opacity: 1; }
+        }
+        
+        .bg-dots {
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden bg-gray-50">
+
+    <!-- Main Content -->
+    <main class="flex-grow flex flex-col max-w-3xl mx-auto w-full h-full overflow-hidden">
+        
+        <!-- Search Section -->
+        <div class="p-4 bg-white shadow-md z-40 flex-none relative">
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="fa-solid fa-search text-gray-400 text-xl"></i>
+                </div>
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    class="block w-full pl-11 pr-3 py-4 border border-gray-300 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition duration-150 ease-in-out text-lg" 
+                    placeholder="輸入姓名或單位 (如：王大明)"
+                    autocomplete="off"
+                >
+                <div id="clear-btn" class="absolute inset-y-0 right-0 pr-4 flex items-center cursor-pointer hidden">
+                    <i class="fa-solid fa-times-circle text-gray-400 hover:text-gray-600 text-xl"></i>
+                </div>
+            </div>
+            <div class="text-[10px] text-gray-400 text-right mt-1 px-1">
+                Last update: 2025/12/30
+            </div>
+        </div>
+
+        <!-- Map & Results Container -->
+        <div class="flex-grow flex flex-col overflow-y-auto no-scrollbar relative">
+            
+            <!-- Map Section -->
+            <div class="bg-slate-50 border-b border-gray-200 relative flex-none h-[50vh] min-h-[350px] bg-dots overflow-hidden shadow-inner">
+                
+                <!-- Map Controls -->
+                <div class="absolute top-3 right-3 z-10">
+                    <button onclick="resetZoom()" class="text-sm bg-white/90 backdrop-blur border border-gray-300 px-4 py-2 rounded-full shadow-md active:scale-95 transition-transform text-gray-700 font-bold">
+                        <i class="fa-solid fa-compress mr-1"></i>全景重置
+                    </button>
+                </div>
+                
+                <div class="absolute top-3 left-3 z-10 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg text-xs text-gray-600 pointer-events-none shadow-sm border border-gray-100 font-medium">
+                    <i class="fa-solid fa-hand-pointer mr-1"></i>雙指縮放 / 單指拖曳
+                </div>
+
+                <!-- SVG Container -->
+                <div id="svg-container" class="w-full h-full flex items-center justify-center">
+                    <!-- SVG injected here -->
+                </div>
+            </div>
+
+            <!-- Result Display Area -->
+            <div id="result-container" class="flex-grow bg-white p-4">
+                <div id="results-list" class="space-y-4 pb-24"></div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        /**
+         * ★ 資料設定區 ★
+         */
+        const guestData = [
+            { name: "王大明", unit: "總經理室", table: "主桌" }, 
+            { name: "陳夫人", unit: "貴賓", table: "主桌" },
+            { name: "消防局長", unit: "消防局", table: "G1" },
+            { name: "消防局全體", unit: "消防局", table: "G1~G3" }, 
+            { name: "李小華", unit: "財務部", table: "B2" },
+            { name: "陳建國", unit: "財務部", table: "B8" }, 
+            { name: "張美玲", unit: "財務部", table: "B10" }, 
+            { name: "林志豪", unit: "資訊部", table: "F2" },
+            { name: "黃怡君", unit: "資訊部", table: "M9" },
+            { name: "吳雅婷", unit: "行銷部", table: "D1" },
+            { name: "劉冠宇", unit: "行銷部", table: "J6" },
+            { name: "蔡淑芬", unit: "行銷部", table: "E5" },
+            { name: "楊宗緯", unit: "業務部", table: "N5" },
+            { name: "許家豪", unit: "業務部", table: "N8" },
+        ];
+
+        // --- 程式邏輯開始 ---
+
+        const searchInput = document.getElementById('search-input');
+        const resultsList = document.getElementById('results-list');
+        const clearBtn = document.getElementById('clear-btn');
+        const svgContainer = document.getElementById('svg-container');
+        
+        let tableCoordinates = {}; 
+        let initialViewBox = "";   
+        let svgElement = null;
+
+        let isPanning = false;
+        let startPoint = { x: 0, y: 0 };
+        let currentViewBox = { x: 0, y: 0, w: 0, h: 0 };
+        let initialPinchDistance = 0;
+        let initialPinchViewBox = null;
+        let isPinching = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderSeatingChart();
+        });
+
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim().toLowerCase();
+            handleSearch(query);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            handleSearch('');
+            searchInput.focus();
+        });
+
+        function handleSearch(query) {
+            if (query.length > 0) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+                resetView();
+                return;
+            }
+
+            const results = guestData.filter(guest => {
+                return guest.name.toLowerCase().includes(query) || 
+                       guest.unit.toLowerCase().includes(query) ||
+                       guest.table.toLowerCase().includes(query);
+            });
+
+            renderResults(results, query);
+
+            let allActiveTables = [];
+            results.forEach(r => {
+                const expanded = expandTableRange(r.table);
+                allActiveTables = [...allActiveTables, ...expanded];
+            });
+            const uniqueTables = [...new Set(allActiveTables)];
+            
+            highlightTables(uniqueTables);
+        }
+
+        function resetView() {
+            resultsList.innerHTML = '';
+            highlightTables([]); 
+        }
+
+        window.resetZoom = function() {
+            if(svgElement) {
+                svgElement.classList.add('smooth-zoom');
+                svgElement.setAttribute('viewBox', initialViewBox);
+            }
+        }
+
+        function expandTableRange(tableStr) {
+            if (!tableStr) return [];
+            
+            if (tableStr === "主桌") {
+                return ["主桌_1", "主桌_2", "主桌_3", "主桌_4", "主桌_5"];
+            }
+
+            let parts = tableStr.split(/,|、| /).map(s => s.trim()).filter(s => s);
+            let result = [];
+            parts.forEach(part => {
+                if (part.includes('~') || part.includes('-')) {
+                    const rangeParts = part.split(/~|-/).map(s => s.trim());
+                    if (rangeParts.length === 2) {
+                        const start = rangeParts[0];
+                        const end = rangeParts[1];
+                        const startMatch = start.match(/([A-Z]+)(\d+)/i);
+                        const endMatch = end.match(/([A-Z]+)(\d+)/i);
+                        if (startMatch && endMatch) {
+                            const startCol = startMatch[1].toUpperCase();
+                            const startRow = parseInt(startMatch[2]);
+                            const endCol = endMatch[1].toUpperCase();
+                            const endRow = parseInt(endMatch[2]);
+                            if (startCol === endCol) {
+                                for (let i = startRow; i <= endRow; i++) {
+                                    result.push(`${startCol}${i}`);
+                                }
+                            } else {
+                                result.push(start);
+                                result.push(end);
+                            }
+                        } else {
+                            result.push(start);
+                            result.push(end);
+                        }
+                    } else {
+                        result.push(part);
+                    }
+                } else {
+                    result.push(part);
+                }
+            });
+            return result;
+        }
+
+        function renderSeatingChart() {
+            const zoneConfig = [
+                // 左側 (紅色)
+                { id: 'A', tables: [1,2,3,5,6,7,8,9] },
+                { id: 'B', tables: [1,2,3,5,6,7,8,9,10] },
+                { id: 'C', tables: [1,2,3,5,6,7,8,9] },
+                { id: 'D', tables: [1,2,3,5,6,7,8,9] },
+                { id: 'E', tables: [1,2,3,5,6,7] },
+                { id: 'F', tables: [1,2,3] },
+                { id: 'G', tables: [1,2,3] },
+                
+                // 右側 (橘色)
+                { id: 'H', tables: [1,2,3] },
+                { id: 'I', tables: [1,2,3] },
+                { id: 'J', tables: [1,2,3,5,6,7] },
+                { id: 'K', tables: [1,2,3,5,6,7,8,9] },
+                { id: 'L', tables: [1,2,3,5,6,7,8,9] },
+                { id: 'M', tables: [1,2,3,5,6,7,8,9,10] },
+                { id: 'N', tables: [1,2,3,5,6,7,8,9] }
+            ];
+
+            const radius = 18; 
+            const spacing = 12;
+            const startX = 30;
+            // ★ 修改 1：大幅上移基準線 (原本200) ★
+            const baseGuestY = 140; 
+            const aisleGap = 80; 
+            
+            const unit = radius * 2 + spacing;
+            const lastColIndex = zoneConfig.length - 1;
+            
+            const lastColX = startX + lastColIndex * unit + aisleGap;
+            const totalWidth = lastColX + startX;
+
+            let maxItems = 0;
+            zoneConfig.forEach(z => { if(z.tables.length > maxItems) maxItems = z.tables.length; });
+            const totalHeight = baseGuestY + (maxItems) * unit + 100; // 增加底部空間給入口處
+            
+            initialViewBox = `0 0 ${totalWidth} ${totalHeight}`;
+
+            let svgHTML = `<svg id="main-svg" class="smooth-zoom" viewBox="${initialViewBox}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`;
+            
+            // ★ 修改 2：新增標題「全環球廳」★
+            svgHTML += `
+                <text x="${totalWidth/2}" y="35" font-size="22" fill="#d97706" font-weight="900" text-anchor="middle" letter-spacing="8" style="filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.1));">全 環 球 廳</text>
+            `;
+
+            // 1. 舞台 (Stage) - 稍微下移以避開標題
+            const stageY = 55;
+            svgHTML += `
+                <rect x="${totalWidth/2 - 150}" y="${stageY}" width="300" height="30" rx="5" fill="#3b82f6" opacity="0.8" />
+                <text x="${totalWidth/2}" y="${stageY + 20}" font-size="14" fill="white" font-weight="bold" text-anchor="middle" dominant-baseline="middle">舞 台 (STAGE)</text>
+            `;
+
+            // 2. 星光大道 (紅毯)
+            // 修改：從主桌第二排下方開始，到底部入口
+            const carpetWidth = 40;
+            const carpetX = totalWidth / 2 - carpetWidth / 2;
+            const carpetStartY = baseGuestY + 70; // 約在主桌第二排下方
+            const carpetHeight = totalHeight - carpetStartY - 60; // 留空間給入口處
+
+            svgHTML += `
+                <rect x="${carpetX}" y="${carpetStartY}" width="${carpetWidth}" height="${carpetHeight}" fill="#fecaca" opacity="0.3" rx="0" />
+            `;
+
+            // 直式文字 (調整起始位置)
+            const labelX = totalWidth / 2;
+            const labelStartY = carpetStartY + 40;
+            const labelGap = 40;
+            ['★','星','光','大','道','★'].forEach((char, i) => {
+                svgHTML += `<text x="${labelX}" y="${labelStartY + i * labelGap}" font-size="14" fill="#ef4444" font-weight="bold" text-anchor="middle" opacity="0.6">${char}</text>`;
+            });
+
+            // ★ 修改 3：入口處 (Entrance) ★
+            const entranceY = totalHeight - 45;
+            svgHTML += `
+                <g id="entrance">
+                    <path d="M ${totalWidth/2 - 50} ${entranceY} L ${totalWidth/2 + 50} ${entranceY} L ${totalWidth/2 + 60} ${entranceY+30} L ${totalWidth/2 - 60} ${entranceY+30} Z" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2" />
+                    <text x="${totalWidth/2}" y="${entranceY + 20}" font-size="14" fill="#475569" font-weight="bold" text-anchor="middle">入 口 處</text>
+                </g>
+            `;
+
+            tableCoordinates = {};
+
+            // 3. 主桌 (Main Tables)
+            const centerX = totalWidth / 2;
+            const row1Y = baseGuestY;  // 對齊第一排
+            const row2Y = baseGuestY + 80; 
+            
+            const radius20 = 36; 
+            const radius15 = 27; 
+            const mainSpacing = 85; 
+
+            // Row 1
+            svgHTML += createMainTable(centerX, row1Y, radius20, "主桌", "主桌_1"); // 中
+            svgHTML += createMainTable(centerX - mainSpacing, row1Y, radius20, "主桌", "主桌_2"); // 左
+            svgHTML += createMainTable(centerX + mainSpacing, row1Y, radius20, "主桌", "主桌_3"); // 右
+
+            // Row 2
+            svgHTML += createMainTable(centerX - mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_4"); // 左偏
+            svgHTML += createMainTable(centerX + mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_5"); // 右偏
+
+
+            // 4. 賓客桌 (Guest Grid)
+            zoneConfig.forEach((zone, index) => {
+                const isRightSide = index >= 7;
+                
+                let cx = startX + index * unit;
+                if (isRightSide) {
+                    cx += aisleGap;
+                }
+
+                const colorClass = 'seat-orange';
+
+                // 內圈 (F, G, H, I) 後退邏輯
+                const innerRows = ['F', 'G', 'H', 'I'];
+                let currentStartY = baseGuestY;
+                
+                if (innerRows.includes(zone.id)) {
+                    currentStartY = baseGuestY + (3 * unit);
+                }
+
+                zone.tables.forEach((tableNum, tableIndex) => {
+                    const cy = currentStartY + tableIndex * unit;
+                    
+                    const tableId = `${zone.id}${tableNum}`;
+                    tableCoordinates[tableId] = { x: cx, y: cy };
+
+                    svgHTML += `
+                        <g id="group-${tableId}">
+                            <circle cx="${cx}" cy="${cy}" r="${radius}" class="seat-circle ${colorClass}" id="seat-${tableId}" />
+                            <text x="${cx}" y="${cy}" class="seat-text" id="text-${tableId}">${tableId}</text>
+                        </g>
+                    `;
+                });
+            });
+
+            svgHTML += `</svg>`;
+            svgContainer.innerHTML = svgHTML;
+            svgElement = document.getElementById('main-svg');
+
+            bindEvents();
+        }
+
+        function createMainTable(x, y, r, label, id) {
+            tableCoordinates[id] = { x: x, y: y };
+            return `
+                <g id="group-${id}">
+                    <circle cx="${x}" cy="${y}" r="${r}" class="seat-circle seat-red" id="seat-${id}" />
+                    <text x="${x}" y="${y}" class="seat-text" style="font-size:16px" id="text-${id}">${label}</text>
+                </g>
+            `;
+        }
+
+        function bindEvents() {
+            svgElement.addEventListener('mousedown', startPan);
+            svgElement.addEventListener('mousemove', pan);
+            svgElement.addEventListener('mouseup', endPan);
+            svgElement.addEventListener('mouseleave', endPan);
+            svgElement.addEventListener('touchstart', handleTouchStart, {passive: false});
+            svgElement.addEventListener('touchmove', handleTouchMove, {passive: false});
+            svgElement.addEventListener('touchend', endPan);
+            svgElement.addEventListener('wheel', handleWheelZoom, { passive: false });
+        }
+
+        // --- 觸控/拖曳/縮放 邏輯 ---
+        function handleTouchStart(e) {
+            if (e.touches.length === 2) {
+                isPinching = true;
+                isPanning = false;
+                svgElement.classList.remove('smooth-zoom');
+                initialPinchDistance = getDistance(e.touches);
+                const vb = svgElement.getAttribute('viewBox').split(' ').map(Number);
+                initialPinchViewBox = { x: vb[0], y: vb[1], w: vb[2], h: vb[3] };
+            } else if (e.touches.length === 1) {
+                isPinching = false;
+                startPan(e);
+            }
+        }
+        function handleTouchMove(e) {
+            e.preventDefault(); 
+            if (isPinching && e.touches.length === 2) {
+                const currentDistance = getDistance(e.touches);
+                if (currentDistance < 10) return;
+                const scale = initialPinchDistance / currentDistance;
+                let newW = initialPinchViewBox.w * scale;
+                let newH = initialPinchViewBox.h * scale;
+                const [ivx, ivy, ivw, ivh] = initialViewBox.split(' ').map(Number);
+                if (newW > ivw * 1.2) { newW = ivw * 1.2; newH = ivh * 1.2; } 
+                if (newW < ivw * 0.15) { newW = ivw * 0.15; newH = ivh * 0.15; }
+                const centerX = initialPinchViewBox.x + initialPinchViewBox.w / 2;
+                const centerY = initialPinchViewBox.y + initialPinchViewBox.h / 2;
+                const newX = centerX - newW / 2;
+                const newY = centerY - newH / 2;
+                svgElement.setAttribute('viewBox', `${newX} ${newY} ${newW} ${newH}`);
+            } else if (!isPinching && e.touches.length === 1) {
+                pan(e);
+            }
+        }
+        function getDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+        function getEventPoint(e) {
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+        function startPan(e) {
+            if (e.type === 'mousedown' && e.button !== 0) return;
+            isPanning = true;
+            svgElement.classList.remove('smooth-zoom'); 
+            const point = getEventPoint(e);
+            startPoint = { x: point.x, y: point.y };
+            const vb = svgElement.getAttribute('viewBox').split(' ').map(Number);
+            currentViewBox = { x: vb[0], y: vb[1], w: vb[2], h: vb[3] };
+            svgElement.style.cursor = 'grabbing';
+        }
+        function pan(e) {
+            if (!isPanning) return;
+            if (e.type !== 'touchmove' && e.cancelable) e.preventDefault();
+            const point = getEventPoint(e);
+            const dx = point.x - startPoint.x;
+            const dy = point.y - startPoint.y;
+            const scaleX = currentViewBox.w / svgElement.clientWidth;
+            const scaleY = currentViewBox.h / svgElement.clientHeight;
+            const newX = currentViewBox.x - (dx * scaleX);
+            const newY = currentViewBox.y - (dy * scaleY);
+            svgElement.setAttribute('viewBox', `${newX} ${newY} ${currentViewBox.w} ${currentViewBox.h}`);
+        }
+        function endPan(e) {
+            isPanning = false;
+            isPinching = false;
+            svgElement.style.cursor = 'grab';
+        }
+        function handleWheelZoom(e) {
+            e.preventDefault(); 
+            svgElement.classList.remove('smooth-zoom');
+            let vb = svgElement.getAttribute('viewBox').split(' ').map(Number);
+            let [vx, vy, vw, vh] = vb;
+            const delta = Math.sign(e.deltaY) * 0.1;
+            const scale = 1 + delta; 
+            let newW = vw * scale;
+            let newH = vh * scale;
+            const [ivx, ivy, ivw, ivh] = initialViewBox.split(' ').map(Number);
+            if (newW > ivw * 1.5) { return; }
+            if (newW < ivw * 0.15) { return; }
+            const rect = svgElement.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const ratioX = mouseX / rect.width;
+            const ratioY = mouseY / rect.height;
+            let newX = vx + (ratioX * (vw - newW));
+            let newY = vy + (ratioY * (vh - newH));
+            svgElement.setAttribute('viewBox', `${newX} ${newY} ${newW} ${newH}`);
+        }
+
+        // --- 顯示結果與 Highlight ---
+
+        function highlightTables(tableIds) {
+            document.querySelectorAll('.seat-circle').forEach(el => {
+                el.classList.remove('seat-active');
+            });
+            document.querySelectorAll('.seat-text-active').forEach(el => {
+                el.classList.remove('seat-text-active');
+            });
+
+            let activeCoords = [];
+
+            tableIds.forEach(id => {
+                const seat = document.getElementById(`seat-${id}`);
+                const text = document.getElementById(`text-${id}`);
+                if (seat && text) {
+                    seat.classList.add('seat-active');
+                    text.classList.add('seat-text-active');
+                }
+                if (tableCoordinates[id]) {
+                    activeCoords.push(tableCoordinates[id]);
+                }
+            });
+
+            if (!svgElement) return;
+
+            if (activeCoords.length > 0) {
+                svgElement.classList.add('smooth-zoom');
+
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                activeCoords.forEach(coord => {
+                    if (coord.x < minX) minX = coord.x;
+                    if (coord.y < minY) minY = coord.y;
+                    if (coord.x > maxX) maxX = coord.x;
+                    if (coord.y > maxY) maxY = coord.y;
+                });
+
+                const [ivx, ivy, ivw, ivh] = initialViewBox.split(' ').map(Number);
+
+                let targetW = (maxX - minX);
+                let targetH = (maxY - minY);
+
+                if (targetW === 0) targetW = 50; 
+                if (targetH === 0) targetH = 50;
+
+                const paddingFactor = 2.5; 
+                let finalW = targetW * paddingFactor;
+                let finalH = targetH * paddingFactor;
+
+                if (finalW < ivw * 0.4) finalW = ivw * 0.4;
+                if (finalH < ivh * 0.4) finalH = ivh * 0.4;
+                
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+
+                let newX = centerX - (finalW / 2);
+                let newY = centerY - (finalH / 2);
+
+                svgElement.setAttribute('viewBox', `${newX} ${newY} ${finalW} ${finalH}`);
+            } else {
+                svgElement.classList.add('smooth-zoom');
+                svgElement.setAttribute('viewBox', initialViewBox);
+            }
+        }
+
+        function renderResults(results, query) {
+            resultsList.innerHTML = '';
+            if (results.length === 0) return;
+
+            results.forEach(guest => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-xl shadow-md border border-gray-100 flex justify-between items-center fade-in cursor-pointer hover:bg-blue-50 transition-colors';
+                
+                card.onclick = () => {
+                    const expanded = expandTableRange(guest.table);
+                    highlightTables(expanded);
+                };
+
+                const highlightedName = highlightText(guest.name, query);
+                const highlightedUnit = highlightText(guest.unit, query);
+
+                card.innerHTML = `
+                    <div>
+                        <h3 class="font-bold text-gray-800 text-lg">${highlightedName}</h3>
+                        <p class="text-sm text-gray-500 mt-1">${highlightedUnit}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-2xl font-bold text-blue-600 block leading-none">${guest.table}</span>
+                    </div>
+                `;
+                resultsList.appendChild(card);
+            });
+        }
+
+        function highlightText(text, query) {
+            if (!query) return text;
+            const lowerText = text.toLowerCase();
+            const lowerQuery = query.toLowerCase();
+            const index = lowerText.indexOf(lowerQuery);
+            if (index >= 0) {
+                return text.substring(0, index) + 
+                       `<span class="bg-yellow-200 text-gray-900">${text.substring(index, index + query.length)}</span>` + 
+                       text.substring(index + query.length);
+            }
+            return text;
+        }
+    </script>
+</body>
+</html>
