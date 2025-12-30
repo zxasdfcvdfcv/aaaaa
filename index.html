@@ -121,7 +121,7 @@
                 </div>
             </div>
             <div class="text-[10px] text-gray-400 text-right mt-1 px-1">
-                Last update: 2025/12/30
+                Last update: <span id="last-updated-text">讀取中...</span>
             </div>
         </div>
 
@@ -150,7 +150,12 @@
 
             <!-- Result Display Area -->
             <div id="result-container" class="flex-grow bg-white p-4">
-                <div id="results-list" class="space-y-4 pb-24"></div>
+                <div id="results-list" class="space-y-4 pb-24">
+                    <!-- 預設顯示讀取狀態 -->
+                    <div class="text-center py-4 text-gray-400 text-sm">
+                        正在載入座位資料...
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -158,24 +163,10 @@
 
     <script>
         /**
-         * ★ 資料設定區 ★
+         * ★ 資料設定區 (已改為動態讀取) ★
+         * guestData 現在預設為空，等待 loadCSV() 填充
          */
-        const guestData = [
-            { name: "王大明", unit: "總經理室", table: "主桌" }, 
-            { name: "陳夫人", unit: "貴賓", table: "主桌" },
-            { name: "消防局長", unit: "消防局", table: "G1" },
-            { name: "消防局全體", unit: "消防局", table: "G1~G3" }, 
-            { name: "李小華", unit: "財務部", table: "B2" },
-            { name: "陳建國", unit: "財務部", table: "B8" }, 
-            { name: "張美玲", unit: "財務部", table: "B10" }, 
-            { name: "林志豪", unit: "資訊部", table: "F2" },
-            { name: "黃怡君", unit: "資訊部", table: "M9" },
-            { name: "吳雅婷", unit: "行銷部", table: "D1" },
-            { name: "劉冠宇", unit: "行銷部", table: "J6" },
-            { name: "蔡淑芬", unit: "行銷部", table: "E5" },
-            { name: "楊宗緯", unit: "業務部", table: "N5" },
-            { name: "許家豪", unit: "業務部", table: "N8" },
-        ];
+        let guestData = [];
 
         // --- 程式邏輯開始 ---
 
@@ -183,6 +174,7 @@
         const resultsList = document.getElementById('results-list');
         const clearBtn = document.getElementById('clear-btn');
         const svgContainer = document.getElementById('svg-container');
+        const lastUpdatedText = document.getElementById('last-updated-text');
         
         let tableCoordinates = {}; 
         let initialViewBox = "";   
@@ -197,7 +189,65 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             renderSeatingChart();
+            loadCSV(); // 啟動時讀取 CSV
         });
+
+        // ★ 新增：讀取 CSV 函式 ★
+        async function loadCSV() {
+            try {
+                // 讀取同一目錄下的 guests.csv
+                // 注意：必須在 Server 環境下 (如 GitHub Pages) 才能運作
+                const response = await fetch('./guests.csv');
+                
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const text = await response.text();
+                parseCSV(text);
+                
+                // 更新狀態與日期
+                const today = new Date().toISOString().split('T')[0];
+                lastUpdatedText.innerText = today;
+                
+                // 清空載入中訊息
+                resultsList.innerHTML = '';
+                
+            } catch (error) {
+                console.error('CSV 載入失敗:', error);
+                resultsList.innerHTML = `
+                    <div class="text-center py-4 text-red-400 text-sm">
+                        <p>資料載入失敗</p>
+                        <p class="text-xs mt-1 text-gray-400">請確認 guests.csv 檔案存在且格式正確</p>
+                        <p class="text-xs mt-1 text-gray-400">(注意：直接開啟 HTML 檔案無法讀取資料，請部署至 GitHub Pages)</p>
+                    </div>
+                `;
+            }
+        }
+
+        // ★ 新增：解析 CSV 函式 ★
+        function parseCSV(csvText) {
+            // 以換行符號分割，並過濾空行
+            const lines = csvText.split('\n').filter(line => line.trim() !== '');
+            
+            // 假設第一行是標題 (table, unit, name)，從第二行開始讀
+            // 如果 CSV 沒有標題，請把 slice(1) 改成 slice(0)
+            const dataRows = lines.slice(1);
+
+            guestData = dataRows.map(line => {
+                // 簡單的逗號分割 (若內容包含逗號需改用更強的 regex，這裡假設內容簡單)
+                // 處理可能出現的 \r (Windows換行)
+                const parts = line.split(',').map(p => p.trim().replace('\r', ''));
+                
+                return {
+                    table: parts[0] || '',
+                    unit: parts[1] || '',
+                    name: parts[2] || ''
+                };
+            });
+
+            console.log(`已載入 ${guestData.length} 筆資料`);
+        }
 
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.trim().toLowerCase();
@@ -317,7 +367,6 @@
             const radius = 18; 
             const spacing = 12;
             const startX = 30;
-            // ★ 修改 1：大幅上移基準線 (原本200) ★
             const baseGuestY = 140; 
             const aisleGap = 80; 
             
@@ -329,36 +378,34 @@
 
             let maxItems = 0;
             zoneConfig.forEach(z => { if(z.tables.length > maxItems) maxItems = z.tables.length; });
-            const totalHeight = baseGuestY + (maxItems) * unit + 100; // 增加底部空間給入口處
+            const totalHeight = baseGuestY + (maxItems) * unit + 100; 
             
             initialViewBox = `0 0 ${totalWidth} ${totalHeight}`;
 
             let svgHTML = `<svg id="main-svg" class="smooth-zoom" viewBox="${initialViewBox}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`;
             
-            // ★ 修改 2：新增標題「全環球廳」★
+            // 標題
             svgHTML += `
                 <text x="${totalWidth/2}" y="35" font-size="22" fill="#d97706" font-weight="900" text-anchor="middle" letter-spacing="8" style="filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.1));">全 環 球 廳</text>
             `;
 
-            // 1. 舞台 (Stage) - 稍微下移以避開標題
+            // 1. 舞台
             const stageY = 55;
             svgHTML += `
                 <rect x="${totalWidth/2 - 150}" y="${stageY}" width="300" height="30" rx="5" fill="#3b82f6" opacity="0.8" />
                 <text x="${totalWidth/2}" y="${stageY + 20}" font-size="14" fill="white" font-weight="bold" text-anchor="middle" dominant-baseline="middle">舞 台 (STAGE)</text>
             `;
 
-            // 2. 星光大道 (紅毯)
-            // 修改：從主桌第二排下方開始，到底部入口
+            // 2. 星光大道
             const carpetWidth = 40;
             const carpetX = totalWidth / 2 - carpetWidth / 2;
-            const carpetStartY = baseGuestY + 70; // 約在主桌第二排下方
-            const carpetHeight = totalHeight - carpetStartY - 60; // 留空間給入口處
+            const carpetStartY = baseGuestY + 70;
+            const carpetHeight = totalHeight - carpetStartY - 60; 
 
             svgHTML += `
                 <rect x="${carpetX}" y="${carpetStartY}" width="${carpetWidth}" height="${carpetHeight}" fill="#fecaca" opacity="0.3" rx="0" />
             `;
 
-            // 直式文字 (調整起始位置)
             const labelX = totalWidth / 2;
             const labelStartY = carpetStartY + 40;
             const labelGap = 40;
@@ -366,7 +413,7 @@
                 svgHTML += `<text x="${labelX}" y="${labelStartY + i * labelGap}" font-size="14" fill="#ef4444" font-weight="bold" text-anchor="middle" opacity="0.6">${char}</text>`;
             });
 
-            // ★ 修改 3：入口處 (Entrance) ★
+            // 入口處
             const entranceY = totalHeight - 45;
             svgHTML += `
                 <g id="entrance">
@@ -377,9 +424,9 @@
 
             tableCoordinates = {};
 
-            // 3. 主桌 (Main Tables)
+            // 3. 主桌
             const centerX = totalWidth / 2;
-            const row1Y = baseGuestY;  // 對齊第一排
+            const row1Y = baseGuestY;
             const row2Y = baseGuestY + 80; 
             
             const radius20 = 36; 
@@ -387,16 +434,16 @@
             const mainSpacing = 85; 
 
             // Row 1
-            svgHTML += createMainTable(centerX, row1Y, radius20, "主桌", "主桌_1"); // 中
-            svgHTML += createMainTable(centerX - mainSpacing, row1Y, radius20, "主桌", "主桌_2"); // 左
-            svgHTML += createMainTable(centerX + mainSpacing, row1Y, radius20, "主桌", "主桌_3"); // 右
+            svgHTML += createMainTable(centerX, row1Y, radius20, "主桌", "主桌_1");
+            svgHTML += createMainTable(centerX - mainSpacing, row1Y, radius20, "主桌", "主桌_2");
+            svgHTML += createMainTable(centerX + mainSpacing, row1Y, radius20, "主桌", "主桌_3");
 
             // Row 2
-            svgHTML += createMainTable(centerX - mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_4"); // 左偏
-            svgHTML += createMainTable(centerX + mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_5"); // 右偏
+            svgHTML += createMainTable(centerX - mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_4");
+            svgHTML += createMainTable(centerX + mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_5");
 
 
-            // 4. 賓客桌 (Guest Grid)
+            // 4. 賓客桌
             zoneConfig.forEach((zone, index) => {
                 const isRightSide = index >= 7;
                 
@@ -407,7 +454,6 @@
 
                 const colorClass = 'seat-orange';
 
-                // 內圈 (F, G, H, I) 後退邏輯
                 const innerRows = ['F', 'G', 'H', 'I'];
                 let currentStartY = baseGuestY;
                 
