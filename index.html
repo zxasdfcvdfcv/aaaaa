@@ -126,7 +126,7 @@
         </div>
 
         <!-- Map & Results Container -->
-        <div class="flex-grow flex flex-col overflow-y-auto no-scrollbar relative">
+        <div id="main-scroll-container" class="flex-grow flex flex-col overflow-y-auto no-scrollbar relative">
             
             <!-- Map Section -->
             <div class="bg-slate-50 border-b border-gray-200 relative flex-none h-[50vh] min-h-[350px] bg-dots overflow-hidden shadow-inner">
@@ -168,6 +168,37 @@
          */
         let guestData = [];
 
+        // ★ 設定：座位圖配置 (JSON) ★
+        // 透過修改此處 JSON 即可增減桌次或調整位置，無需修改程式邏輯
+        let layoutConfig = {
+            "style": {
+                "radius": 18,
+                "spacing": 12,
+                "startX": 30,
+                "baseGuestY": 140,
+                "aisleGap": 80
+            },
+            "zones": [
+                // 左側區域
+                { "id": "A", "tables": [1,2,3,5,6,7,8,9] },
+                { "id": "B", "tables": [1,2,3,5,6,7,8,9,10] },
+                { "id": "C", "tables": [1,2,3,5,6,7,8,9] },
+                { "id": "D", "tables": [1,2,3,5,6,7,8,9] },
+                { "id": "E", "tables": [1,2,3,5,6,7] },
+                { "id": "F", "tables": [1,2,3], "offsetRows": 3 }, // offsetRows: 向下位移幾格 (用於避開主桌或其他空間)
+                { "id": "G", "tables": [1,2,3], "offsetRows": 3 },
+                
+                // 右側區域
+                { "id": "H", "tables": [1,2,3], "offsetRows": 3 },
+                { "id": "I", "tables": [1,2,3], "offsetRows": 3 },
+                { "id": "J", "tables": [1,2,3,5,6,7] },
+                { "id": "K", "tables": [1,2,3,5,6,7,8,9] },
+                { "id": "L", "tables": [1,2,3,5,6,7,8,9] },
+                { "id": "M", "tables": [1,2,3,5,6,7,8,9,10] },
+                { "id": "N", "tables": [1,2,3,5,6,7,8,9] }
+            ]
+        };
+
         // --- 程式邏輯開始 ---
 
         const searchInput = document.getElementById('search-input');
@@ -175,6 +206,7 @@
         const clearBtn = document.getElementById('clear-btn');
         const svgContainer = document.getElementById('svg-container');
         const lastUpdatedText = document.getElementById('last-updated-text');
+        const mainScrollContainer = document.getElementById('main-scroll-container');
         
         let tableCoordinates = {}; 
         let initialViewBox = "";   
@@ -344,40 +376,23 @@
         }
 
         function renderSeatingChart() {
-            const zoneConfig = [
-                // 左側 (紅色)
-                { id: 'A', tables: [1,2,3,5,6,7,8,9] },
-                { id: 'B', tables: [1,2,3,5,6,7,8,9,10] },
-                { id: 'C', tables: [1,2,3,5,6,7,8,9] },
-                { id: 'D', tables: [1,2,3,5,6,7,8,9] },
-                { id: 'E', tables: [1,2,3,5,6,7] },
-                { id: 'F', tables: [1,2,3] },
-                { id: 'G', tables: [1,2,3] },
-                
-                // 右側 (橘色)
-                { id: 'H', tables: [1,2,3] },
-                { id: 'I', tables: [1,2,3] },
-                { id: 'J', tables: [1,2,3,5,6,7] },
-                { id: 'K', tables: [1,2,3,5,6,7,8,9] },
-                { id: 'L', tables: [1,2,3,5,6,7,8,9] },
-                { id: 'M', tables: [1,2,3,5,6,7,8,9,10] },
-                { id: 'N', tables: [1,2,3,5,6,7,8,9] }
-            ];
-
-            const radius = 18; 
-            const spacing = 12;
-            const startX = 30;
-            const baseGuestY = 140; 
-            const aisleGap = 80; 
+            // 從 layoutConfig 讀取設定
+            const { zones, style } = layoutConfig;
+            const { radius, spacing, startX, baseGuestY, aisleGap } = style;
             
             const unit = radius * 2 + spacing;
-            const lastColIndex = zoneConfig.length - 1;
+            const lastColIndex = zones.length - 1;
             
             const lastColX = startX + lastColIndex * unit + aisleGap;
             const totalWidth = lastColX + startX;
 
             let maxItems = 0;
-            zoneConfig.forEach(z => { if(z.tables.length > maxItems) maxItems = z.tables.length; });
+            zones.forEach(z => { 
+                // 計算該行實際佔用的高度 (包含 offset)
+                const offset = z.offsetRows || 0;
+                const items = z.tables.length + offset;
+                if(items > maxItems) maxItems = items; 
+            });
             const totalHeight = baseGuestY + (maxItems) * unit + 100; 
             
             initialViewBox = `0 0 ${totalWidth} ${totalHeight}`;
@@ -444,8 +459,11 @@
 
 
             // 4. 賓客桌
-            zoneConfig.forEach((zone, index) => {
-                const isRightSide = index >= 7;
+            // 自動判斷左右側分界 (假設一半分給左邊，一半分給右邊)
+            const splitIndex = Math.ceil(zones.length / 2);
+
+            zones.forEach((zone, index) => {
+                const isRightSide = index >= splitIndex;
                 
                 let cx = startX + index * unit;
                 if (isRightSide) {
@@ -454,11 +472,10 @@
 
                 const colorClass = 'seat-orange';
 
-                const innerRows = ['F', 'G', 'H', 'I'];
+                // 處理垂直位移 (offsetRows)
                 let currentStartY = baseGuestY;
-                
-                if (innerRows.includes(zone.id)) {
-                    currentStartY = baseGuestY + (3 * unit);
+                if (zone.offsetRows) {
+                    currentStartY = baseGuestY + (zone.offsetRows * unit);
                 }
 
                 zone.tables.forEach((tableNum, tableIndex) => {
@@ -674,6 +691,7 @@
                 card.onclick = () => {
                     const expanded = expandTableRange(guest.table);
                     highlightTables(expanded);
+                    mainScrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
                 };
 
                 const highlightedName = highlightText(guest.name, query);
@@ -707,4 +725,3 @@
     </script>
 </body>
 </html>
-
