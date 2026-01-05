@@ -52,7 +52,7 @@
             stroke-width: 2;
             transition: fill 0.3s ease;
             pointer-events: auto;
-            cursor: default;
+            cursor: pointer;
         }
 
         /* 顏色定義 */
@@ -319,6 +319,32 @@
             highlightTables(uniqueTables);
         }
 
+        window.handleTableClick = function(tableId) {
+            searchInput.value = tableId;
+            handleTableSearch(tableId);
+        }
+
+        function handleTableSearch(tableId) {
+            clearBtn.classList.remove('hidden');
+            const lowerTarget = tableId.toLowerCase();
+
+            const results = guestData.filter(guest => {
+                const guestTables = expandTableRange(guest.table);
+                return guestTables.some(t => t.toLowerCase() === lowerTarget);
+            });
+
+            renderResults(results, tableId);
+
+            let allActiveTables = [tableId];
+            results.forEach(r => {
+                const expanded = expandTableRange(r.table);
+                allActiveTables = [...allActiveTables, ...expanded];
+            });
+            const uniqueTables = [...new Set(allActiveTables)];
+            
+            highlightTables(uniqueTables);
+        }
+
         function resetView() {
             resultsList.innerHTML = '';
             highlightTables([]); 
@@ -485,7 +511,7 @@
                     tableCoordinates[tableId] = { x: cx, y: cy };
 
                     svgHTML += `
-                        <g id="group-${tableId}">
+                        <g id="group-${tableId}" onclick="handleTableClick('${tableId}')">
                             <circle cx="${cx}" cy="${cy}" r="${radius}" class="seat-circle ${colorClass}" id="seat-${tableId}" />
                             <text x="${cx}" y="${cy}" class="seat-text" id="text-${tableId}">${tableId}</text>
                         </g>
@@ -503,7 +529,7 @@
         function createMainTable(x, y, r, label, id) {
             tableCoordinates[id] = { x: x, y: y };
             return `
-                <g id="group-${id}">
+                <g id="group-${id}" onclick="handleTableClick('${id}')">
                     <circle cx="${x}" cy="${y}" r="${r}" class="seat-circle seat-red" id="seat-${id}" />
                     <text x="${x}" y="${y}" class="seat-text" style="font-size:16px" id="text-${id}">${label}</text>
                 </g>
