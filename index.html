@@ -361,7 +361,7 @@
             if (!tableStr) return [];
             
             if (tableStr === "主桌") {
-                return ["主桌_1", "主桌_2", "主桌_3", "主桌_4", "主桌_5"];
+                return ["主桌A", "主桌B", "主桌C", "主桌D", "主桌E"];
             }
 
             let parts = tableStr.split(/,|、| /).map(s => s.trim()).filter(s => s);
@@ -475,13 +475,13 @@
             const mainSpacing = 85; 
 
             // Row 1
-            svgHTML += createMainTable(centerX, row1Y, radius20, "主桌", "主桌_1");
-            svgHTML += createMainTable(centerX - mainSpacing, row1Y, radius20, "主桌", "主桌_2");
-            svgHTML += createMainTable(centerX + mainSpacing, row1Y, radius20, "主桌", "主桌_3");
+            svgHTML += createMainTable(centerX, row1Y, radius20, "主桌A", "主桌A");
+            svgHTML += createMainTable(centerX - mainSpacing, row1Y, radius20, "主桌B", "主桌B");
+            svgHTML += createMainTable(centerX + mainSpacing, row1Y, radius20, "主桌C", "主桌C");
 
             // Row 2
-            svgHTML += createMainTable(centerX - mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_4");
-            svgHTML += createMainTable(centerX + mainSpacing * 0.7, row2Y, radius15, "主桌", "主桌_5");
+            svgHTML += createMainTable(centerX - mainSpacing * 0.7, row2Y, radius15, "主桌D", "主桌D");
+            svgHTML += createMainTable(centerX + mainSpacing * 0.7, row2Y, radius15, "主桌E", "主桌E");
 
 
             // 4. 賓客桌
